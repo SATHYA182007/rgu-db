@@ -12,8 +12,8 @@ export default function MainLayout() {
       <AppSidebar />
       <SidebarInset>
         <Topbar />
-        <main className="flex-1 overflow-y-auto bg-background">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-background">
+          <div className="w-full px-5 py-6">
             <Outlet />
           </div>
         </main>

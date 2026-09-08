@@ -38,7 +38,10 @@ export function useAppData(): AppData {
       .then(([s, e]) => {
         if (!cancelled) {
           setStudents(s);
-          setExamResults(e);
+          // Filter exam results to only include those belonging to students of the current course context
+          const studentIds = new Set(s.map(student => student.id));
+          const filteredExams = e.filter(exam => studentIds.has(exam.student_id));
+          setExamResults(filteredExams);
         }
       })
       .catch(err => {

@@ -95,13 +95,13 @@ const CourseContext = createContext<CourseContextType | undefined>(undefined);
 
 export function CourseProvider({ children }: { children: React.ReactNode }) {
   const [currentCourse, setCurrentCourseState] = useState<CourseId>(() => {
-    const saved = localStorage.getItem('rsmart_active_course');
+    const saved = localStorage.getItem('rgu_active_course');
     return (saved as CourseId) || 'bba';
   });
 
   const setCurrentCourse = (course: CourseId) => {
     setCurrentCourseState(course);
-    localStorage.setItem('rsmart_active_course', course);
+    localStorage.setItem('rgu_active_course', course);
   };
 
   const config = COURSE_CONFIGS[currentCourse];

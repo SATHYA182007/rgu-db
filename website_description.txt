@@ -1,0 +1,206 @@
+================================================================================
+COLLEGE ADMISSION MANAGEMENT PLATFORM (RGU-DB)
+Reference Document & System Description
+================================================================================
+
+1. PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+This platform is a premium, enterprise-grade, AI-powered Admission Intelligence 
+Platform and College Admission Management Dashboard designed for college admission 
+teams and administrative heads. It functions like a modern SaaS CRM and 
+Enterprise Resource Planning (ERP) platform, displaying real-time applicant details, 
+test scores, grading/performance bands, interview stages, financial metrics, and 
+scholarship eligibility.
+
+Key characteristics:
+- Highly professional, clean, and spacious light-themed interface.
+- Rich interactive data visualizations, dynamic progress indicators, and charts.
+- Configurable settings for cut-off marks, passing thresholds, and dynamic 
+  data mapping.
+- Multi-course segmentation (supports BBA, MBA, Engineering, Arts & Science, MCA, 
+  BCA, B.Com, etc.) dynamically adapting the interface based on the active course.
+
+
+2. TECHNICAL STACK
+--------------------------------------------------------------------------------
+- Core Framework: React 19 (custom state, context-driven flow)
+- Programming Language: TypeScript (type-safe interfaces for database structures, 
+  ranking systems, configurations)
+- Build System & Tooling: Vite (fast development server, HMR, production building)
+- Styling & Customization: 
+    * Tailwind CSS v3 (responsive layout utilities, smooth utility-based animations)
+    * PostCSS & Autoprefixer
+    * tw-animate-css & Framer Motion (page transitions, sidebar toggles, drawer actions)
+    * @fontsource-variable (Roboto Slab & Instrument Sans custom variable fonts)
+- Database & Backend: Supabase (PostgreSQL with real-time syncing client)
+- Core Libraries & Hooks:
+    * React Router DOM v7 (protected routing, public-only redirects)
+    * Recharts v3 (responsive donut charts, progress bars, custom analytics meters)
+    * React Hook Form v7 (schema-validated, responsive inputs)
+    * Zod (type-safe validation schemas)
+    * Lucide React & Remix Icon (iconography suites)
+    * Radix UI & Shadcn (primitives for Sheets/Drawers, Tooltips, Tab panels, Buttons, 
+      Cards, Separators, Dropdowns)
+
+
+3. DATABASE STRUCTURE & SCHEMAS
+--------------------------------------------------------------------------------
+The backend runs on PostgreSQL via Supabase. The database contains four main 
+tables structure to manage admissions and tracking:
+
+A. Students Table (`students`):
+----------------------------------------
+Stores personal, geographic, academic, and application status metadata.
+- id: uuid (Primary Key)
+- created_at: timestamptz
+- name: text
+- father_name: text
+- dob: date
+- gender: text
+- phone: text (mapped as mobile)
+- email: text
+- state: text
+- city: text
+- group12th: text (mapped as group_12th)
+- marks12: numeric (mapped as marks_12th)
+- score12: numeric (mapped as percentage_12th)
+- marks10: numeric (mapped as marks_10th)
+- score10: numeric (mapped as percentage_10th)
+- ug_status: text ('Completed' | 'Pending' | 'N/A')
+- ug_score: numeric (null if N/A)
+- course: text (e.g., 'bba', 'engineering', 'arts_science', 'mba', 'mca')
+- application_no: integer (unique application ID)
+
+B. Exam Results Table (`exam_results`):
+----------------------------------------
+Contains score performance details and candidate compliance.
+- id: uuid (Primary Key)
+- student_id: uuid (Foreign Key referencing students.id)
+- exam_set: text (e.g., 'Set A', 'Set B')
+- section_scores: jsonb (stores key-value subscores dynamically, e.g.:
+    * Engineering: physics, chemistry, mathematics, techawareness, aptitude, 
+      communication, programming
+    * Arts & Science: accounts, commerce, mathematics, techawareness, aptitude, 
+      communication, programming
+    * BBA / MBA / MCA: logicalreasoning, generalawareness, verbalability, 
+      comprehensivereading, managerialaptitude, aiknowledge, mcacoreaptitude
+  )
+- total_score: numeric (aggregated candidate score out of 100)
+- percentage: numeric
+- status: text ('Evaluated' | 'Malpractice')
+- raw_answers: jsonb (key-value strings of candidate selections)
+- ai_feedback: text (automated AI feedback summary of applicant performance)
+- band: text (e.g., 'DISTINGUISHED', 'PROFICIENT', 'ADVANCED', 'EMERGING')
+- created_at: timestamptz (mapped as completed_at)
+
+C. Upcoming Interviews Table (`interviews`):
+----------------------------------------
+For scheduling and evaluating candidate interaction.
+- id: uuid (Primary Key)
+- student_id: uuid (Foreign Key referencing students.id)
+- interviewer_name: text
+- interview_date: date
+- interview_time: time
+- interview_status: text ('Scheduled' | 'Completed' | 'Rescheduled' | 'Missed')
+- feedback: text (notes taken by reviewer)
+- rating: integer (1 to 5 stars rating scale)
+- recommendation: text ('Approved' | 'Rejected' | 'Hold')
+
+D. Scholarships Table (`scholarships`):
+----------------------------------------
+Manages merit-based funding allocations.
+- id: uuid (Primary Key)
+- student_id: uuid (Foreign Key referencing students.id)
+- scholarship_type: text (e.g., 'Merit', 'Need-based', 'Sports')
+- amount: numeric (allocated waiver or amount)
+- approval_status: text ('Pending' | 'Approved' | 'Rejected')
+
+
+4. CORE FRONTEND ARCHITECTURE & UTILITIES
+--------------------------------------------------------------------------------
+A. Course Switching Context (`CourseContext.tsx`):
+   Allows administrators to switch the course filter (e.g. from BBA to 
+   Engineering) via a global state mechanism. When the course changes:
+   - The data is fetched from Supabase using course-matching query filters.
+   - The UI automatically adapts, displaying only the parameter fields, maximum 
+     limits, and column metrics specified in `SectionConfig` for that course.
+
+B. Data Fetching Hook (`useAppData.ts`):
+   Combines students database rows and exam results. It processes:
+   - Pagination chunking (fetching database entries efficiently in chunks of 1000).
+   - Dynamic parameter normalization: reads the Postgres JSONB section scores, 
+     normalizes case and typos, and converts them to structured TypeScript key-values.
+   - Live cache reloading and local storage threshold retrieval.
+
+C. Protected Route Gateways:
+   Controls redirect actions, routing unauthenticated users to `/login` and 
+   storing validation credentials securely under `localStorage`.
+
+
+5. SCREEN & COMPONENT SPECIFICATIONS
+--------------------------------------------------------------------------------
+
+A. Authentication Pages (`Login.tsx` & `Signup.tsx`)
+   - Fully animated, responsive forms utilizing React Hook Form + Zod.
+   - Fields: Name, Email, Password, Mobile, Role selection (Admin, Reviewer, Staff).
+   - Integrates OAuth buttons (Google, Microsoft).
+   - Uses `localStorage` triggers for route permission guards.
+
+B. The Executive Dashboard (`Dashboard.tsx`)
+   - Header Bar: Title, context-specific subtitle, and a "Refresh Workspace" button.
+   - Summary Metric Cards: Grid of 8 statistics (Total Applicants, Tests Completed, 
+     Pending Tests, Pass Rate, Distinguished Band count, Evaluated tests, Average Score, 
+     and Malpractice Cases) featuring hover interactions, custom icons, and trend lines.
+   - Performance Band Donut Chart: Visually segments candidates into grading bands. Includes 
+     hover tooltips and a symmetrical detail legends panel.
+   - Avg Section Scores Progress: Dynamic horizontal progress meters comparing 
+     averages against maximum scores for the active course's test sections.
+   - Leaders Board: Showcases the top 5 highest-scoring applicants, displaying profile 
+     avatars, scores, percentages, and their evaluation band badge.
+   - Live Exam Pipeline Monitor: Visualizes status ratios and rates (e.g., malpractice rate, 
+     pass rate percentage).
+
+C. Student Management Portal (`Students.tsx` & `StudentTable.tsx`)
+   - Advanced Search & Multi-Filters: Filter applicants by registration state, 
+     evaluation status ('Evaluated', 'Pending', 'Malpractice'), or ranking bands.
+   - Pagination Controls: Handles large applicant counts with custom pageSize selection.
+   - Responsive Data Table: High-density data grid displaying Applicant No, Student Name, 
+     State, academic percentage metrics, final exam score, status, and actions.
+
+D. Student Detail Slide-Out Drawer (`StudentDrawer.tsx`)
+   - Slide-out side sheet displaying detailed candidate diagnostics.
+   - Student profile header containing name, contact info, city, and application number.
+   - Academic Section: 10th and 12th details, subjects, and UG score if applicable.
+   - Exam Scoring Section: Subject-by-subject breakdown bars with color keys.
+   - AI Insight & Feedback Panel: Summarizes strength sectors and evaluation reviews.
+   - Administrative Controls: Quick action buttons to Approve/Reject applications, 
+     add reviewer notes, toggle review checklists, and log communications.
+
+E. Advanced Analytics Hub (`Analytics.tsx`)
+   - Visualizes multi-course registration ratios, state-by-state geographic maps/charts, 
+     reviewer processing speed indicators, and historical application timeline trends.
+
+F. Scholarship Registry (`Scholarships.tsx`)
+   - Identifies candidate scholarship eligibility, evaluates threshold matches, and 
+     manages approval workflows for fee waivers.
+
+G. System Settings Control (`Settings.tsx`)
+   - Interactive threshold config: allows setting custom cut-off values for grading 
+     bands (Distinguished, Proficient, Advanced, Emerging) and passing percentages.
+   - Values are persisted to `localStorage` and globally update the client scoring UI.
+
+
+6. PREMIUM DESIGN SYSTEM (STYLE TOKENS)
+--------------------------------------------------------------------------------
+- Theme: Soft, premium SaaS ERP layout with high-fidelity components.
+- Background Color: `#F4F9FF` (Light luxury blue-tinted white canvas)
+- Sidebar Gradients: `#4F8CFF` to `#7AB8FF` (Electric gradient blend)
+- Primary Branding Color: `#3B82F6` (Modern Cobalt/Blue)
+- Card Accents: Clean white (`#FFFFFF`) with precise borders (`#E5EEF9`) and soft shadows.
+- Typography: Inter / Plus Jakarta Sans (Main UI) and Roboto Slab (Headlines).
+- Band Badging Colors (Harmonious Accents):
+    * Distinguished: `#8B5CF6` (Premium Violet)
+    * Proficient: `#3B82F6` (Electric Blue)
+    * Advanced: `#10B981` (Emerald green)
+    * Emerging: `#F59E0B` (Amber gold)
+================================================================================

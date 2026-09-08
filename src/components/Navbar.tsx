@@ -49,6 +49,8 @@ export default function Navbar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [courseDropdownOpen, setCourseDropdownOpen] = useState(false);
+  const [adminName, setAdminName] = useState(() => localStorage.getItem('admin_fullName') || 'Admin User');
+  const [adminRole, setAdminRole] = useState(() => localStorage.getItem('admin_role') || 'Admin');
   const navigate = useNavigate();
 
   const notifRef = useRef<HTMLDivElement>(null);
@@ -65,6 +67,15 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      setAdminName(localStorage.getItem('admin_fullName') || 'Admin User');
+      setAdminRole(localStorage.getItem('admin_role') || 'Admin');
+    };
+    window.addEventListener('admin-profile-update', handleProfileUpdate);
+    return () => window.removeEventListener('admin-profile-update', handleProfileUpdate);
+  }, []);
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-card border-b border-border shadow-soft h-[64px] flex items-center px-6 gap-4">
       {/* Logo */}
@@ -73,7 +84,7 @@ export default function Navbar() {
           <Sparkles size={15} className="text-primary-foreground" />
         </div>
         <span className="text-base font-bold tracking-tight text-foreground font-heading">
-          RSmart<span className="text-primary">DB</span>
+          RGU<span className="text-primary">DB</span>
         </span>
       </div>
 
@@ -212,8 +223,8 @@ export default function Navbar() {
               <AvatarFallback className="bg-primary text-primary-foreground text-xs font-bold">A</AvatarFallback>
             </Avatar>
             <div className="hidden md:block text-left">
-              <p className="text-xs font-semibold text-foreground leading-none">Admin User</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Admission Admin</p>
+              <p className="text-xs font-semibold text-foreground leading-none">{adminName}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{adminRole}</p>
             </div>
             <ChevronDown size={13} className="text-muted-foreground hidden md:block" />
           </button>
@@ -237,7 +248,13 @@ export default function Navbar() {
                   </button>
                 ))}
                 <div className="border-t border-border mt-1 pt-1">
-                  <button onClick={() => navigate('/login')} className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-destructive hover:bg-destructive/8 transition-colors">
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('rgu_authenticated');
+                      navigate('/login');
+                    }}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-destructive hover:bg-destructive/8 transition-colors"
+                  >
                     <LogOut size={14} />
                     Sign Out
                   </button>

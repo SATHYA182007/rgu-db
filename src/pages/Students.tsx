@@ -1,14 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Search, ChevronLeft, ChevronRight, MoreHorizontal, Download,
+  Search, ChevronLeft, ChevronRight, ChevronDown, MoreHorizontal, Download,
   CheckCircle2, RefreshCw, AlertCircle, ShieldAlert
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Student, ExamStatus, RankingBand, RANKING_BAND_STYLES, BAND_DISPLAY, formatCourse } from '@/types';
+import { Student, ExamStatus, RankingBand, RANKING_BAND_STYLES, BAND_DISPLAY, formatCourse, getSafeRankingBand } from '@/types';
 import StudentDrawer from '@/components/StudentDrawer';
 import { useAppData } from '@/hooks/useAppData';
 import { useCourse } from '@/context/CourseContext';
@@ -24,121 +24,259 @@ const PAGE_SIZE = 10;
 
 export default function Students() {
   const { config } = useCourse();
-  const { students, examResults, loading, error, getLatestExamResult, reload, updateStudent } = useAppData();
+  const { students, examResults, loading, error, reload, updateStudent } = useAppData();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('All');
   const [bandFilter, setBandFilter] = useState<string>('All');
   const [page, setPage] = useState(1);
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const filtered = useMemo(() => {
-    return students.filter(s => {
-      const matchSearch =
-        (s.name || '').toLowerCase().includes(search.toLowerCase()) ||
-        String(s.application_no || '').includes(search) ||
-        (s.email || '').toLowerCase().includes(search.toLowerCase()) ||
-        (s.city || '').toLowerCase().includes(search.toLowerCase()) ||
-        (s.exam_set || '').toLowerCase().includes(search.toLowerCase());
+  const selectedStudent = students.find(s => s.id === selectedStudentId) || null;
+  const selectedExamResult = examResults.find(r => r.id === selectedExamId) || null;
 
-      const result = getLatestExamResult(s.id);
+  const enrichedList = useMemo(() => {
+    const list: any[] = [];
+
+    // 1. Add all completed exams as individual applicant entries
+    examResults.forEach(r => {
+      const student = students.find(s => s.id === r.student_id);
+      list.push({
+        id: r.id, // Unique row ID (the exam result ID)
+        studentId: r.student_id,
+        name: student?.name ?? 'Unknown',
+        application_no: student?.application_no ?? '—',
+        gender: student?.gender ?? '—',
+        course: student?.course ?? '',
+        city: student?.city ?? '—',
+        state: student?.state ?? '—',
+        percentage_12th: student?.percentage_12th ?? 0,
+        ug_status: student?.ug_status ?? '—',
+        exam_set: r.exam_set,
+        score: `${r.total_score}/100 (${(r.percentage || 0).toFixed(0)}%)`,
+        status: r.status,
+        band: getSafeRankingBand(r.band, r.percentage),
+        hasExam: true,
+        examResult: r,
+        studentObj: student,
+      });
+    });
+
+    // 2. Add students who have NO exam results (Pending status)
+    students.forEach(s => {
+      const hasExam = examResults.some(r => r.student_id === s.id);
+      if (!hasExam) {
+        list.push({
+          id: `pending-${s.id}`,
+          studentId: s.id,
+          name: s.name,
+          application_no: s.application_no,
+          gender: s.gender,
+          course: s.course,
+          city: s.city,
+          state: s.state,
+          percentage_12th: s.percentage_12th,
+          ug_status: s.ug_status,
+          exam_set: s.exam_set ?? '—',
+          score: '—',
+          status: 'Pending',
+          band: '—',
+          hasExam: false,
+          examResult: null,
+          studentObj: s,
+        });
+      }
+    });
+
+    return list;
+  }, [students, examResults]);
+
+  const filtered = useMemo(() => {
+    return enrichedList.filter(item => {
+      const matchSearch =
+        (item.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        String(item.application_no || '').includes(search) ||
+        (item.city || '').toLowerCase().includes(search.toLowerCase()) ||
+        (item.exam_set || '').toLowerCase().includes(search.toLowerCase());
+
       const matchStatus =
         statusFilter === 'All' ||
-        (statusFilter === 'Pending' && !result) ||
-        (result && result.status === statusFilter);
+        (statusFilter === 'Pending' && item.status === 'Pending') ||
+        (item.hasExam && item.status === statusFilter);
 
-      const band = result?.band ?? 'EMERGING';
-      const matchBand = bandFilter === 'All' || band === bandFilter;
+      const matchBand =
+        bandFilter === 'All' ||
+        (item.hasExam && item.band === bandFilter);
 
       return matchSearch && matchStatus && matchBand;
     });
-  }, [students, examResults, search, statusFilter, bandFilter]);
+  }, [enrichedList, search, statusFilter, bandFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const selectedExamResult = selectedStudent ? getLatestExamResult(selectedStudent.id) : null;
+
+  const exportToCSV = () => {
+    const headers = [
+      'Application No',
+      'Name',
+      'Gender',
+      'Branch / Course',
+      'City',
+      'State',
+      '12th %',
+      '10th %',
+      'UG Status',
+      'Exam Set',
+      'Total Score',
+      'Percentage',
+      'Exam Status',
+      'Band',
+      'Email',
+      'Mobile',
+    ];
+
+    const rows = filtered.map(item => [
+      item.application_no,
+      item.name,
+      item.gender,
+      formatCourse(item.course),
+      item.city,
+      item.state,
+      item.percentage_12th,
+      item.studentObj?.percentage_10th ?? '—',
+      item.ug_status ?? '—',
+      item.exam_set,
+      item.hasExam ? item.examResult?.total_score : '—',
+      item.hasExam ? `${(item.examResult?.percentage ?? 0).toFixed(1)}%` : '—',
+      item.status,
+      item.hasExam ? (BAND_DISPLAY[item.band as RankingBand] ?? '—') : '—',
+      item.studentObj?.email ?? '—',
+      item.studentObj?.mobile ?? '—',
+    ]);
+
+    const escape = (val: unknown) => {
+      const str = String(val ?? '');
+      return str.includes(',') || str.includes('"') || str.includes('\n')
+        ? `"${str.replace(/"/g, '""')}"`
+        : str;
+    };
+
+    const csvContent = [
+      headers.map(escape).join(','),
+      ...rows.map(row => row.map(escape).join(',')),
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `${config.label.replace(/\s+/g, '_')}_applicants_${timestamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <Card>
-        <CardHeader className="flex-row items-center justify-between border-b border-border pb-4 gap-4">
+      {/* Consolidated Premium Header & Filter Card */}
+      <Card className="overflow-hidden border border-border/80 shadow-sm rounded-xl bg-card py-0 gap-0">
+        {/* Top Row: Title, Subtitle, and Action Buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/5 gap-3">
           <div>
-            <CardTitle className="text-base font-bold text-foreground">{config.label} Applicant Management</CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
-              {loading ? 'Syncing...' : `${filtered.length} applicants • live from ${config.studentsTable}`}
+            <h1 className="text-sm font-semibold tracking-tight text-foreground">
+              {config.label} Applicant Management
+            </h1>
+            <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+              {loading ? 'Syncing...' : `${filtered.length} applicants`}
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={reload}>
-              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-8 gap-1.5 text-xs font-semibold px-2.5 hover:bg-muted/80 transition-all duration-200" 
+              onClick={reload}
+            >
+              <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
               Refresh
             </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => alert(`Exporting ${config.label} database to CSV...`)}>
-              <Download size={13} />
-              Export CSV
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-8 gap-1.5 text-xs font-semibold px-2.5 hover:bg-muted/80 transition-all duration-200" 
+              onClick={exportToCSV}
+              disabled={filtered.length === 0}
+            >
+              <Download size={11} />
+              Export CSV {filtered.length > 0 && `(${filtered.length})`}
             </Button>
           </div>
-        </CardHeader>
+        </div>
+
+        {/* Second Row: Integrated Search & Filters */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2 bg-card gap-3">
+          {/* Left: Compact Search Bar */}
+          <div className="relative w-full sm:w-60 md:w-64 shrink-0">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={12} />
+            <Input
+              className="pl-8 h-8 text-xs bg-background border border-border/80 rounded-lg placeholder:text-muted-foreground/50 w-full focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus-visible:border-neutral-400"
+              placeholder="Search applicant..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+            />
+          </div>
+
+          {/* Right: Dropdowns Group */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+            {/* Status Selector */}
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold shrink-0">Status</span>
+              <div className="relative w-full sm:w-auto">
+                <select
+                  value={statusFilter}
+                  onChange={e => { setStatusFilter(e.target.value as any); setPage(1); }}
+                  className="appearance-none pr-8 pl-3 h-8 text-xs rounded-lg border border-border/80 bg-background font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-auto cursor-pointer shadow-sm hover:bg-muted/30 transition-all"
+                >
+                  {ALL_STATUSES.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={11} />
+              </div>
+            </div>
+
+            {/* Band Selector */}
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold shrink-0">Band</span>
+              <div className="relative w-full sm:w-auto">
+                <select
+                  value={bandFilter}
+                  onChange={e => { setBandFilter(e.target.value); setPage(1); }}
+                  className="appearance-none pr-8 pl-3 h-8 text-xs rounded-lg border border-border/80 bg-background font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary w-full sm:w-auto cursor-pointer shadow-sm hover:bg-muted/30 transition-all"
+                >
+                  <option value="All">All Bands</option>
+                  {['DISTINGUISHED', 'PROFICIENT', 'ADVANCED', 'EMERGING'].map(b => (
+                    <option key={b} value={b}>{BAND_DISPLAY[b as RankingBand]}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" size={11} />
+              </div>
+            </div>
+          </div>
+        </div>
       </Card>
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/20 rounded-xl p-4 text-destructive text-sm">
+        <div className="flex items-center gap-3 bg-destructive/10 border border-destructive/20 rounded-xl p-4 text-destructive text-sm mt-4">
           <AlertCircle size={17} />
           <span><strong>Database error:</strong> {error}</span>
         </div>
       )}
-
-      {/* Filter Bar */}
-      <Card>
-        <CardContent className="pt-4 pb-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="relative w-full sm:max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
-              <Input
-                className="pl-9"
-                placeholder="Search by name, app no, email, exam set..."
-                value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1); }}
-              />
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground font-semibold">Status:</span>
-              {ALL_STATUSES.map(s => (
-                <button
-                  key={s}
-                  onClick={() => { setStatusFilter(s); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    statusFilter === s
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-muted-foreground border-border hover:border-primary hover:text-primary'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground font-semibold">Band:</span>
-              {['All', 'DISTINGUISHED', 'PROFICIENT', 'ADVANCED', 'EMERGING'].map(b => (
-                <button
-                  key={b}
-                  onClick={() => { setBandFilter(b); setPage(1); }}
-                  className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    bandFilter === b
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-muted-foreground border-border hover:border-primary hover:text-primary'
-                  }`}
-                >
-                  {b === 'All' ? 'All' : BAND_DISPLAY[b as RankingBand]}
-                </button>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Table */}
       <motion.div
@@ -146,31 +284,19 @@ export default function Students() {
         className="bg-card rounded-2xl ring-1 ring-foreground/10 shadow-soft overflow-hidden"
       >
         <div className="overflow-x-auto">
-          <table className="w-full text-left table-fixed">
-            <colgroup>
-              <col className="w-[190px]" />
-              <col className="w-[130px]" />
-              <col className="w-[130px]" />
-              <col className="w-[70px]" />
-              <col className="w-[100px]" />
-              <col className="w-[80px]" />
-              <col className="w-[100px]" />
-              <col className="w-[110px]" />
-              <col className="w-[100px]" />
-              <col className="w-[60px]" />
-            </colgroup>
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-muted border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="px-3 py-4 font-semibold">Applicant</th>
-                <th className="px-3 py-4 font-semibold">Branch/Course</th>
-                <th className="px-3 py-4 font-semibold">Location</th>
-                <th className="px-3 py-4 font-semibold">12th %</th>
-                <th className="px-3 py-4 font-semibold">UG Status</th>
-                <th className="px-3 py-4 font-semibold">Exam Set</th>
-                <th className="px-3 py-4 font-semibold">Score</th>
-                <th className="px-3 py-4 font-semibold">Exam Status</th>
-                <th className="px-3 py-4 font-semibold">Band</th>
-                <th className="px-3 py-4 font-semibold text-right">Action</th>
+              <tr className="bg-muted border-b border-border text-[11px] uppercase tracking-wider text-muted-foreground font-bold">
+                <th className="px-3 py-3 font-semibold">Applicant</th>
+                <th className="px-3 py-3 font-semibold">Branch/Course</th>
+                <th className="px-3 py-3 font-semibold">Location</th>
+                <th className="px-3 py-3 font-semibold text-center">12th %</th>
+                <th className="px-3 py-3 font-semibold">UG Status</th>
+                <th className="px-3 py-3 font-semibold">Exam Set</th>
+                <th className="px-3 py-3 font-semibold">Score</th>
+                <th className="px-3 py-3 font-semibold">Exam Status</th>
+                <th className="px-3 py-3 font-semibold">Band</th>
+                <th className="px-3 py-3 font-semibold text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -191,67 +317,76 @@ export default function Students() {
                   </td>
                 </tr>
               )}
-              {!loading && paginated.map((student, i) => {
-                const result = getLatestExamResult(student.id);
-                const band: RankingBand = result?.band ?? 'EMERGING';
+              {!loading && paginated.map((item, i) => {
+                const band: RankingBand = item.band as RankingBand;
                 return (
-                  <motion.tr
-                    key={student.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="hover:bg-muted/50 transition-colors cursor-pointer group"
-                    onClick={() => { setSelectedStudent(student); setDrawerOpen(true); }}
+                  <tr
+                    key={item.id}
+                    className="hover:bg-muted/50 transition-colors cursor-pointer group text-xs"
+                    onClick={() => {
+                      setSelectedStudentId(item.studentId);
+                      setSelectedExamId(item.hasExam ? item.examResult.id : null);
+                      setDrawerOpen(true);
+                    }}
                   >
-                    <td className="px-3 py-4 truncate">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-700 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                          {(student.name || '?').charAt(0).toUpperCase()}
+                    <td className="px-3 py-2.5 max-w-[180px]">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-700 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                          {(item.name || '?').charAt(0).toUpperCase()}
                         </div>
-                        <div>
-                          <p className="font-semibold text-foreground group-hover:text-primary transition-colors text-sm">{student.name}</p>
-                          <p className="text-xs text-muted-foreground">#{student.application_no} • {student.gender}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-4 text-sm text-foreground font-medium truncate">{formatCourse(student.course)}</td>
-                    <td className="px-3 py-4 text-sm text-muted-foreground truncate">{student.city}, {student.state}</td>
-                    <td className="px-3 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground text-sm">{student.percentage_12th}%</span>
-                        <div className="hidden sm:block w-8 bg-muted rounded-full h-1.5 shrink-0">
-                          <div className="bg-primary h-1.5 rounded-full" style={{ width: `${Math.min(student.percentage_12th, 100)}%` }} />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">{item.name}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">#{item.application_no} • {item.gender}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-4 text-sm text-muted-foreground truncate">{student.ug_status ?? '—'}</td>
-                    <td className="px-3 py-4 text-sm font-mono text-muted-foreground uppercase truncate">{student.exam_set}</td>
-                    <td className="px-3 py-4 text-sm font-semibold text-foreground truncate">
-                      {result ? `${result.total_score}/100 (${(result.percentage || 0).toFixed(0)}%)` : '—'}
+                    <td className="px-3 py-2.5 text-foreground font-medium truncate whitespace-nowrap max-w-[120px]">{formatCourse(item.course)}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[130px]" title={`${item.city}, ${item.state}`}>{item.city}, {item.state}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="font-semibold text-foreground">{item.percentage_12th}%</span>
+                        <div className="hidden md:block w-8 bg-muted rounded-full h-1 shrink-0">
+                          <div className="bg-primary h-1 rounded-full" style={{ width: `${Math.min(item.percentage_12th, 100)}%` }} />
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-3 py-4 truncate">
-                      {result ? (
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${examStatusColors[result.status]}`}>
-                          {result.status === 'Malpractice' ? <ShieldAlert size={11} /> : <CheckCircle2 size={11} />}
-                          <span className="truncate">{result.status}</span>
+                    <td className="px-3 py-2.5 text-muted-foreground truncate whitespace-nowrap">{item.ug_status ?? '—'}</td>
+                    <td className="px-3 py-2.5 font-mono text-muted-foreground uppercase truncate whitespace-nowrap">{item.exam_set}</td>
+                    <td className="px-3 py-2.5 font-semibold text-foreground truncate whitespace-nowrap">
+                      {item.score}
+                    </td>
+                    <td className="px-3 py-2.5 truncate whitespace-nowrap">
+                      {item.hasExam ? (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${examStatusColors[item.status as ExamStatus]}`}>
+                          {item.status === 'Malpractice' ? <ShieldAlert size={10} /> : <CheckCircle2 size={10} />}
+                          <span>{item.status}</span>
                         </span>
                       ) : (
-                        <span className="text-xs text-muted-foreground italic">Pending</span>
+                        <span className="text-[10px] text-muted-foreground italic">Pending</span>
                       )}
                     </td>
-                    <td className="px-3 py-4 truncate">
-                      {result ? (
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${RANKING_BAND_STYLES[band]}`}>
+                    <td className="px-3 py-2.5 truncate whitespace-nowrap">
+                      {item.hasExam ? (
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-semibold ${RANKING_BAND_STYLES[band]}`}>
                           {BAND_DISPLAY[band]}
                         </span>
-                      ) : <span className="text-muted-foreground text-xs">—</span>}
+                      ) : <span className="text-muted-foreground">—</span>}
                     </td>
-                    <td className="px-3 py-4 text-right" onClick={e => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-primary">
-                        <MoreHorizontal size={17} />
+                    <td className="px-3 py-2.5 text-right" onClick={e => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="text-muted-foreground hover:text-primary"
+                        onClick={() => {
+                          setSelectedStudentId(item.studentId);
+                          setSelectedExamId(item.hasExam ? item.examResult.id : null);
+                          setDrawerOpen(true);
+                        }}
+                      >
+                        <MoreHorizontal size={14} />
                       </Button>
                     </td>
-                  </motion.tr>
+                  </tr>
                 );
               })}
             </tbody>

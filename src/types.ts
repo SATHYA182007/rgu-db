@@ -88,10 +88,22 @@ export function formatCourse(course: string): string {
 }
 
 export function getRankingBand(percentage: number): RankingBand {
-  if (percentage >= 76) return 'DISTINGUISHED';
-  if (percentage >= 51) return 'PROFICIENT';
-  if (percentage >= 26) return 'ADVANCED';
+  const dist = Number(localStorage.getItem('rgu_cutoff_distinguished') || '76');
+  const prof = Number(localStorage.getItem('rgu_cutoff_proficient') || '51');
+  const adv = Number(localStorage.getItem('rgu_cutoff_advanced') || '26');
+
+  if (percentage >= dist) return 'DISTINGUISHED';
+  if (percentage >= prof) return 'PROFICIENT';
+  if (percentage >= adv) return 'ADVANCED';
   return 'EMERGING';
+}
+
+export function getSafeRankingBand(band: string | null | undefined, percentage: number): RankingBand {
+  const validBands: RankingBand[] = ['DISTINGUISHED', 'PROFICIENT', 'ADVANCED', 'EMERGING'];
+  if (band && validBands.includes(band as RankingBand)) {
+    return band as RankingBand;
+  }
+  return getRankingBand(percentage);
 }
 
 export const RANKING_BAND_STYLES: Record<RankingBand, string> = {

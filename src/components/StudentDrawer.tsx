@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, User, BookOpen, GraduationCap, Phone, Mail, MapPin,
-  AlertTriangle, CheckCircle2, Brain, Hash, Calendar, Clock, ShieldAlert, Activity, TrendingUp
+  AlertTriangle, CheckCircle2, Hash, Calendar, Clock, ShieldAlert, Activity, TrendingUp
 } from 'lucide-react';
 import { Student, ExamResult, RankingBand, RANKING_BAND_STYLES, BAND_DISPLAY, formatCourse } from '@/types';
 import { useCourse } from '@/context/CourseContext';
@@ -33,23 +33,26 @@ export default function StudentDrawer({
     max: sec.max
   })) : [];
 
+  const showFeedback = examResult?.ai_feedback &&
+    examResult.ai_feedback.trim().replace(/^["']|["']$/g, '').trim().toLowerCase() !== "candidate shows proficiency across multiple sections.";
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-hidden">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-foreground/20 backdrop-blur-sm z-40"
+            className="absolute inset-0 bg-foreground/25 backdrop-blur-sm"
           />
           <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-            className="fixed inset-y-0 right-0 w-full max-w-2xl bg-background border-l border-border z-50 flex flex-col shadow-premium"
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="relative w-full max-w-2xl max-h-[90vh] bg-background border border-border rounded-2xl flex flex-col shadow-premium overflow-hidden z-10"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-6 bg-card border-b border-border sticky top-0 z-10">
@@ -170,14 +173,6 @@ export default function StudentDrawer({
                 </div>
               </div>
 
-              {/* Exam Info */}
-              <div className="bg-card rounded-2xl ring-1 ring-foreground/10 p-4 shadow-soft">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground font-semibold">Assigned Exam Set</span>
-                  <span className="font-mono font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded">{student.exam_set}</span>
-                </div>
-              </div>
-
               {/* Exam Results */}
               {examResult ? (
                 <div className="bg-card rounded-2xl ring-1 ring-foreground/10 p-5 shadow-soft space-y-4">
@@ -225,20 +220,21 @@ export default function StudentDrawer({
                     ))}
                   </div>
 
+                  {showFeedback && (
+                    <div className="bg-primary/5 rounded-xl border border-primary/10 p-4 space-y-1.5">
+                      <p className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                        <Activity size={12} /> AI Evaluation Feedback
+                      </p>
+                      <p className="text-xs text-foreground italic leading-relaxed">
+                        "{examResult.ai_feedback}"
+                      </p>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted rounded-xl p-3">
                     <span className="flex items-center gap-1"><Hash size={11} /> Set: <span className="font-mono font-bold text-foreground ml-1 uppercase">{examResult.exam_set}</span></span>
                     <span className="flex items-center gap-1"><Clock size={11} /> {new Date(examResult.completed_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                   </div>
-
-                  {examResult.ai_feedback && (
-                    <div className="bg-muted border border-border rounded-xl p-4 space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-primary">
-                        <Brain size={14} />
-                        <span>AI ASSESSMENT INSIGHT</span>
-                      </div>
-                      <p className="text-xs text-foreground leading-relaxed">{examResult.ai_feedback}</p>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="bg-card rounded-2xl ring-1 ring-border border-dashed p-8 text-center">
@@ -248,7 +244,7 @@ export default function StudentDrawer({
               )}
             </div>
           </motion.div>
-        </>
+        </div>
       )}
     </AnimatePresence>
   );

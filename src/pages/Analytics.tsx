@@ -7,10 +7,11 @@ import {
 import { FileDown, FileSpreadsheet, Printer, Sparkles, RefreshCw } from 'lucide-react';
 import { useAppData } from '@/hooks/useAppData';
 import { useCourse } from '@/context/CourseContext';
-import { formatCourse, getRankingBand, RANKING_BAND_STYLES, BAND_DISPLAY, RankingBand, ExamResult } from '@/types';
+import { formatCourse, getRankingBand, getSafeRankingBand, RANKING_BAND_STYLES, BAND_DISPLAY, RankingBand, ExamResult } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
 const COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444'];
 const BAND_COLORS: Record<RankingBand, string> = {
@@ -27,7 +28,8 @@ export default function Analytics() {
   const total = students.length;
   const evaluated = examResults.filter(r => r.status === 'Evaluated');
   const malpractice = examResults.filter(r => r.status === 'Malpractice').length;
-  const passed = evaluated.filter(r => r.percentage >= 50).length;
+  const passThreshold = Number(localStorage.getItem('rgu_pass_threshold') || '50');
+  const passed = evaluated.filter(r => r.percentage >= passThreshold).length;
   const passPercent = evaluated.length ? Math.round((passed / evaluated.length) * 100) : 0;
 
   const courseCounts: Record<string, number> = {};
@@ -50,7 +52,7 @@ export default function Analytics() {
 
   const bandCounts: Record<RankingBand, number> = { DISTINGUISHED: 0, PROFICIENT: 0, ADVANCED: 0, EMERGING: 0 };
   examResults.forEach(r => {
-    const b = r.band ?? getRankingBand(r.percentage);
+    const b = getSafeRankingBand(r.band, r.percentage);
     bandCounts[b] = (bandCounts[b] ?? 0) + 1;
   });
   const bandData = (Object.entries(bandCounts) as [RankingBand, number][])
@@ -101,16 +103,16 @@ export default function Analytics() {
   return (
     <div className="space-y-6 min-w-0 w-full overflow-hidden pb-8">
       {/* Header */}
-      <Card>
-        <CardHeader className="flex-row items-start justify-between border-b border-border pb-4 gap-4">
+      <div className="rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex flex-row items-start justify-between gap-4 p-5">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Sparkles size={17} className="text-primary" />
-              <CardTitle className="text-base font-bold">{config.label} Analytics Intelligence</CardTitle>
+              <span className="text-base font-bold text-foreground">{config.label} Analytics Intelligence</span>
             </div>
-            <CardDescription>Deep analytics on exam performance, demographics & section-wise scores</CardDescription>
+            <p className="text-sm text-muted-foreground">Deep analytics on exam performance, demographics &amp; section-wise scores</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 shrink-0">
             <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => alert(`Exporting ${config.label} analytics to PDF...`)}>
               <FileDown size={13} className="text-red-500" /> PDF
             </Button>
@@ -121,21 +123,37 @@ export default function Analytics() {
               <Printer size={13} className="text-blue-600" /> Print
             </Button>
           </div>
-        </CardHeader>
-      </Card>
+        </div>
+      </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="bg-card border border-border p-1 w-full max-w-md h-auto grid grid-cols-3">
-          <TabsTrigger value="overview" className="text-xs py-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Overview</TabsTrigger>
-          <TabsTrigger value="demographics" className="text-xs py-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Demographics</TabsTrigger>
-          <TabsTrigger value="exams" className="text-xs py-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Exam Performance</TabsTrigger>
+        {/* Premium pill-style tab bar */}
+        <TabsList className="h-auto p-1 rounded-xl bg-muted/60 border border-border gap-0 w-fit inline-flex">
+          {[
+            { value: 'overview', label: 'Overview' },
+            { value: 'demographics', label: 'Demographics' },
+            { value: 'exams', label: 'Exam Performance' },
+          ].map(tab => (
+            <TabsTrigger
+              key={tab.value}
+              value={tab.value}
+              className={cn(
+                'rounded-lg px-5 py-2 text-sm font-medium transition-all duration-200',
+                'text-muted-foreground hover:text-foreground',
+                'data-[state=active]:bg-background data-[state=active]:text-primary',
+                'data-[state=active]:shadow-sm data-[state=active]:font-semibold'
+              )}
+            >
+              {tab.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 m-0 focus:outline-none">
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {kpiCards.map((c, i) => (
-              <motion.div key={i} whileHover={{ y: -2 }} className="bg-card rounded-2xl ring-1 ring-foreground/10 p-5 shadow-soft">
+              <motion.div key={i} whileHover={{ y: -2 }} className="bg-card rounded-2xl border border-border shadow-sm p-5">
                 <p className="text-xs font-semibold text-muted-foreground">{c.label}</p>
                 <p className="text-2xl font-bold text-foreground mt-2">{c.value}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">{c.desc}</p>
